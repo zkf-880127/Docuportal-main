@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<siteMap xmlns="http://schemas.microsoft.com/AspNet/SiteMap-File-1.0" >
+    <siteMapNode title="" url="" description="Caesars Claims and Contracts Info Portal" roles="*" >
+        <siteMapNode title="Claims Room"
+             url="ClaimsRoom.aspx"
+             description="Claims Room"
+             roles="*" >
+            <siteMapNode title="Manage Claim"
+                 url="ClaimRoom-ManageClaim.aspx"
+                 description="Manage Claim"
+                 roles="*"/>
+            <siteMapNode title="Creditor Summary"
+               url="ClaimRoom-ViewCreditorSummary.aspx"
+               description="Creditor Summary"
+               roles="*"/>
+        </siteMapNode>
+        <siteMapNode title="Contracts"
+            url="ContractRegister.aspx"
+            description="Contracts"
+            roles="*" >
+            <siteMapNode title="Manage Contract"
+              url="Contracts-ManageContract.aspx"
+              description="Manage Contract"
+              roles="*"/>
+        </siteMapNode>
+      <siteMapNode title="Supplier Letter"
+          url="SupplierRegister.aspx"
+          description="Supplier Letter"
+          roles="*" >
+        <siteMapNode title="Manage Supplier Letter"
+             url="Supplier-ManageSupplier.aspx"
+             description="Manage Supplier Letter"
+             roles="*"/>
+      </siteMapNode>
+      <siteMapNode title="MSAs"
+             url="MSARegister.aspx"
+             description="MSAs"
+             roles="*" >
+          <siteMapNode title="Manage MSA"
+               url="MSA-ManageMSA.aspx"
+               description="Manage MSA"
+               roles="*"/>
+        </siteMapNode>          
+    </siteMapNode>
+</siteMap>

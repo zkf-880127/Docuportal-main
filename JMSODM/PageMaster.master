@@ -1,0 +1,839 @@
+<%@ Master Language="VB" %>
+
+<%------------------------------------------------------------------------------------------%>
+<%---- Standardized master page                                                           --%>
+<%---- December 2011:  Refactoring by John Niesen                                         --%>
+<%------------------------------------------------------------------------------------------%>
+<%@ Import Namespace="System.Data" %>
+<%@ Import Namespace="System.Data.OleDb" %>
+<%@ Import Namespace="System.Data.SqlClient" %>
+<%@ Import Namespace="Webapps.Utils" %>
+<%@ Import Namespace="System.Web.Services" %>
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<script language="VB" runat="server">
+    '----- Site/page specific variable section ---------------------------------------
+
+    '----- Common page level variable section; these should not change ----------
+    Dim rightNow As DateTime = DateTime.Now
+    Dim strFullDateTime As String
+    Dim strUser As String = ""
+    Private _setCurrentMenuItem As String
+    Dim errLocation As String
+    Dim errString As String
+    '----------------------------------------------------------------------------
+    '
+    '----- Custom / Page specific Code Section --------------------------------------------
+
+
+    '----- Standardized Code Section -----------------------------------------------------------
+    '----- Note:  These code blocks generally do not need to be modifed-------------------------
+    '-------------------------------------------------------------------------------------------    
+    Public Property SetCurrentMenuItem() As String
+        Get
+            Return _setCurrentMenuItem
+        End Get
+        Set(ByVal value As String)
+            _setCurrentMenuItem = value
+        End Set
+    End Property
+
+    Public ReadOnly Property HTMLbody() As HtmlGenericControl
+        Get
+            Return Me.htmlBoday1
+        End Get
+    End Property
+
+    Sub GetMainMenus()
+        Dim CurrentMenuItem As String = Me.SetCurrentMenuItem
+        If Not String.IsNullOrEmpty(CurrentMenuItem) Then
+            If CurrentMenuItem.ToUpper.IndexOf("PAGE.ASPX?NAME=") = -1 Then
+                If CurrentMenuItem.IndexOf("=") > 0 Then
+                    CurrentMenuItem = CurrentMenuItem.Substring(0, CurrentMenuItem.IndexOf("=") + 1)
+                End If
+            End If
+        End If
+        Dim CurrentMenuItemParent As String = ""
+        Dim ds As New System.Data.DataSet
+        CustomRoles.GetData(ds)
+        If Not ds Is Nothing Then
+            Session("Roles") = ds
+            If String.IsNullOrEmpty(Me.SetCurrentMenuItem) And String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = System.Configuration.ConfigurationManager.AppSettings("Login")
+            ElseIf (String.Compare(Me.SetCurrentMenuItem, System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0) And Not String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage
+            End If
+
+            If (SetCurrentMenuItem.Contains("Document-Detail.aspx")) Then
+                SetCurrentMenuItem = GetQueueString(SetCurrentMenuItem)
+            End If
+            If (SetCurrentMenuItem.Contains("DocumnetCopy.aspx")) Then
+                SetCurrentMenuItem = GetQueueCopyString(SetCurrentMenuItem)
+            End If
+
+            Dim expression As String = "pagename = '" & SetCurrentMenuItem & "' AND MenuID IS NULL"    'wli - changed CurrentMenuItem to SetCurrentMenuItem 2/23/2012
+            Dim MatchRows() As System.Data.DataRow = ds.Tables(0).Select(expression)    ' Get parent of page
+            If MatchRows.Length >= 1 Then
+                For Each row As System.Data.DataRow In MatchRows
+                    If row("AttachTo") IsNot DBNull.Value Then
+                        CurrentMenuItemParent = row("AttachTo")
+                    End If
+                Next
+            End If
+            expression = "MenuDisplayed = True AND MenuID = 'Main'"
+            Dim foundRows() As System.Data.DataRow = ds.Tables(0).Select(expression)    ' Check to see if page exists
+            If foundRows.Length <= 0 Then
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage   ' If page doesn't exist select home menu
+            End If
+            Dim menuHtml As String = String.Empty
+            Dim FooterMenuHtml As String = String.Empty
+            menuHtml += "<div class=""nav""><ul id=""aat"">"
+            FooterMenuHtml += "<ul >"
+            Dim intMenuLoop As Integer = 0
+            For Each row As System.Data.DataRow In foundRows
+                intMenuLoop = intMenuLoop + 1
+                If (String.Compare(System.IO.Path.GetFileName(SetCurrentMenuItem), row("pagename"), True) = 0 Or row("main_id") = CurrentMenuItemParent) And Int(Trim(row("Level"))) <> 3 Then
+                    'The current page or its parent page
+                    Session("CurrentMainMenu_ID") = row("main_id")
+                    If row("main_id") = CurrentMenuItemParent Then 't means there are children
+                        Dim menuchildeHtml As String = String.Empty
+                        menuchildeHtml = ToTreeFunction(ds, row("main_id"), SetCurrentMenuItem)
+                        menuHtml += String.Format("<li class=""nav-item nav-show nav-show-color"" id=""{0}""><a href=""javascript:;"" class=""a-nav-tiem a-nav-show""><i class=""my-icon nav-icon icon_1""></i><span><b>{1}</b></span><i class=""my-icon nav-more""></i></a> {2}</li>", row("main_id"), row("menuname"), menuchildeHtml)
+                    Else
+                        If Convert.ToBoolean(row("local")) Then
+                            menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""{1}"" class=""a-nav-tiem""><span><b>{2}</b></span></a></li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""{1}""  target=""_blank"" class=""a-nav-tiem""><span><b>{2}</b></span></a></li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+                    End If
+                ElseIf String.Compare(row("pagename"), System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0 And (Not String.IsNullOrEmpty(Session("User")) And Session("User") <> "Public") Then 'log out if
+                    'lblloginout.Text = String.Format("<a href=""{0}""><span>{1}</span></a>", row("pagename"), "Log Out")
+                    ' menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""{1}""><span>{2}</span></a></li>", row("main_id"), row("pagename"), "Log Out")
+                    LoginOut.Text = String.Format("<a href=""{0}"" style=""color: #fff;""><span>{1}</span></a>", row("pagename"), "Log Out")
+                Else
+                    If Int(Trim(row("Level"))) = 1 Then
+                        Dim AttachToexpression As String = "MenuDisplayed = True AND AttachTo = '" & row("main_id") & "' AND Level =3 "
+                        Dim AttachTofoundRows() As System.Data.DataRow = ds.Tables(0).Select(AttachToexpression)
+                        If AttachTofoundRows.Length > 0 Then
+                            Dim menuchildeHtml As String = String.Empty
+                            menuchildeHtml = ToTreeFunction(ds, row("main_id"), "")
+                            menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""javascript:;""><i class=""my-icon nav-icon icon_1""></i><span><b>{1}</b></span><i class=""my-icon nav-more""></i></a> {2}</li>", row("main_id"), row("menuname"), menuchildeHtml)
+                        Else
+                            If Convert.ToBoolean(row("local")) Then
+                                menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""{1}""><span><b>{2}</b></span></a></li>", row("main_id"), row("pagename"), row("menuname"))
+
+                            Else
+                                menuHtml += String.Format("<li class=""nav-item"" id=""{0}""><a href=""{1}"" target=""_blank""><span><b>{2}</b></span></a></li>", row("main_id"), row("pagename"), row("menuname"))
+
+                            End If
+                        End If
+                    End If
+                End If
+            Next
+
+            If Not String.IsNullOrEmpty(Session("User")) Then
+                menuHtml += GetPublicDoc()
+            End If
+
+            menuHtml += "</ul></div>"
+            menuHtml += "<div class=""leftmenubottom"">&nbsp;</div>"
+            FooterMenuHtml += "</ul>"
+            LiteralLeftMenus.Text = menuHtml
+        End If
+    End Sub
+
+    Private Function GetPublicDoc() As String
+        Dim ReturnStr As String = String.Empty
+        Dim ds As DataSet
+
+        Dim strSQL As String = "  select ID,fileName from tbl_Web_Public_Documents  Order by SortOrder  "
+        Dim dbKey As String = System.Configuration.ConfigurationManager.AppSettings("dbKey")
+
+        Dim myReader As System.Data.SqlClient.SqlDataReader = Nothing
+        Try
+            ds = CommonUtilsv2.GetDataSet(dbKey, strSQL, CommandType.Text)
+            If Not ds Is Nothing Then
+                Dim strpublicdoc As String = String.Empty
+                Dim StrLen As Integer = ds.Tables(0).Rows.Count
+                Dim menuHtml As String = String.Empty
+                strpublicdoc = "<li class=""nav-item"" ><a href=""javascript:;""><i class=""my-icon nav-icon icon_1""></i><span><b>Portal Guide</b></span><i class=""my-icon nav-more""></i></a><ul>"
+                For Each row As DataRow In ds.Tables(0).Rows
+                    strpublicdoc += String.Format("<li class=""submenu_normal""><div runat=""server""><a href=""Download-PublicDocument.aspx?Document={0}""  download=""{1}"">{1}</a></div></li>", row("ID"), row("fileName"))
+                Next
+                strpublicdoc += "</ul></li>"
+                ReturnStr = strpublicdoc
+            End If
+            Return ReturnStr
+        Catch ex As Exception
+            Return Nothing
+        Finally
+            If Not myReader Is Nothing AndAlso Not myReader.IsClosed Then
+                myReader.Close()
+            End If
+        End Try
+    End Function
+
+
+    Function ToTreeFunction(ByVal ds As System.Data.DataSet, ByVal AttacTo As String, ByVal CurrentPage As String) As String
+        Dim expression As String = " MenuDisplayed = True AND AttachTo = '" & AttacTo & "' AND Level =3 " 'Select the corresponding dataSet data 
+        Dim foundRows() As System.Data.DataRow = ds.Tables(0).Select(expression)
+        Dim menuchildHtml As String = String.Empty
+        If foundRows.Length > 0 Then
+            menuchildHtml += "<ul>"
+            For Each row As System.Data.DataRow In foundRows
+                'CurrentPage:Is it the current page you click on
+                If String.IsNullOrEmpty(CurrentPage) Then
+                    If Convert.ToBoolean(row("local")) Then
+                        menuchildHtml += String.Format("<li class=""nav-itemchild""><a href=""{1}"" id=""{0}""><span>{2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                    Else
+                        menuchildHtml += String.Format("<li class=""nav-itemchild""><a href=""{1}"" id=""{0}""  target=""_blank""><span>{2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                    End If
+                Else
+                    If Convert.ToBoolean(row("local")) Then
+                        If String.Compare(System.IO.Path.GetFileName(SetCurrentMenuItem), row("pagename"), True) = 0 Then
+                            menuchildHtml += String.Format("<li class=""nav-itemchild act""><a href=""{1}"" id=""{0}""><span>{2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuchildHtml += String.Format("<li class=""nav-itemchild""><a href=""{1}"" id=""{0}""><span>{2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+
+                    Else
+                        If String.Compare(System.IO.Path.GetFileName(SetCurrentMenuItem), row("pagename"), True) = 0 Then
+                            menuchildHtml += String.Format("<li class=""nav-itemchild act""><a href=""{1}"" id=""{0}"" target=""_blank""><span>{2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuchildHtml += String.Format("<li class=""nav-itemchild""><a href=""{1}"" id=""{0}"" target=""_blank"" <> span > {2}</span></a> </li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+
+                    End If
+                End If
+            Next
+            menuchildHtml += "</ul>"
+        End If
+        Return menuchildHtml.ToString
+    End Function
+
+    Sub GetSubMenus()
+        Dim ds As New System.Data.DataSet
+        CustomRoles.GetData(ds)
+        If Not ds Is Nothing Then
+            Session("Roles") = ds
+            If String.IsNullOrEmpty(Me.SetCurrentMenuItem) And String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = System.Configuration.ConfigurationManager.AppSettings("Login")
+            ElseIf (String.Compare(Me.SetCurrentMenuItem, System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0) And Not String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage
+            End If
+            Dim expression As String = "MenuDisplayed = True AND AttachTo = '" + Session("CurrentMainMenu_ID") + "' and Level=2"
+            Dim foundRows() As System.Data.DataRow = ds.Tables(0).Select(expression)    ' Check to see if page exists
+            If foundRows.Length <= 0 Then    'If page doesn't exist select home menu
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage
+            End If
+            Dim menuHtml As String = String.Empty
+            menuHtml += "<ul>"
+            If foundRows.Length = 0 Then
+                divSubMenu.Visible = False
+            Else
+                For Each row As System.Data.DataRow In foundRows
+                    If String.Compare(System.IO.Path.GetFileName(SetCurrentMenuItem), row("pagename"), True) = 0 Then
+                        If Convert.ToBoolean(row("local")) Then
+                            menuHtml += String.Format("<li class=""submenu_selected""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuHtml += String.Format("<li class=""submenu_selected""><div id=""{0}"" runat=""server""><a href=""{1}"" target=""_blank"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+                    ElseIf String.Compare(row("pagename"), System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0 And (Not String.IsNullOrEmpty(Session("User")) And Session("User") <> "Public") Then
+                        menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), "Log Out")
+                    Else
+                        If Convert.ToBoolean(row("local")) Then
+                            menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}""  target=""_blank"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+                    End If
+                Next
+            End If
+            menuHtml += "</ul>"
+            LiteralSubMenus.Text = menuHtml
+        End If
+    End Sub
+
+    Function GetMainSubMenus() As String
+        Dim strRet As String = String.Empty
+        Dim ds As New System.Data.DataSet
+        CustomRoles.GetData(ds)
+        If Not ds Is Nothing Then
+            Session("Roles") = ds
+            If String.IsNullOrEmpty(Me.SetCurrentMenuItem) And String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = System.Configuration.ConfigurationManager.AppSettings("Login")
+            ElseIf (String.Compare(Me.SetCurrentMenuItem, System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0) And Not String.IsNullOrEmpty(Session("User")) Then
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage
+            End If
+            Dim expression As String = "MenuDisplayed = True AND AttachTo = '" + Session("CurrentMainMenu_ID") + "'"
+            Dim foundRows() As System.Data.DataRow = ds.Tables(0).Select(expression)    ' Check to see if page exists
+            If foundRows.Length <= 0 Then    'If page doesn't exist select home menu
+                Me.SetCurrentMenuItem = Webapps.Utils.ApplicationSettings.Homepage
+            End If
+            Dim menuHtml As String = String.Empty
+            menuHtml += "<ul>"
+            If foundRows.Length = 0 Then
+                divSubMenu.Visible = False
+            Else
+                For Each row As System.Data.DataRow In foundRows
+                    If String.Compare(System.IO.Path.GetFileName(SetCurrentMenuItem), row("pagename"), True) = 0 Then
+                        If Convert.ToBoolean(row("local")) Then
+                            menuHtml += String.Format("<li class=""submenu_selected""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuHtml += String.Format("<li class=""submenu_selected""><div id=""{0}"" runat=""server""><a href=""{1}"" target=""_blank"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+                    ElseIf String.Compare(row("pagename"), System.Configuration.ConfigurationManager.AppSettings("Login"), True) = 0 And (Not String.IsNullOrEmpty(Session("User")) And Session("User") <> "Public") Then
+                        menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), "Log Out")
+                    Else
+                        If Convert.ToBoolean(row("local")) Then
+                            menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        Else
+                            menuHtml += String.Format("<li class=""submenu_normal""><div id=""{0}"" runat=""server""><a href=""{1}""  target=""_blank"">{2}</a></div></li>", row("main_id"), row("pagename"), row("menuname"))
+                        End If
+                    End If
+                Next
+            End If
+            menuHtml += "</ul>"
+            LiteralSubMenus.Text = menuHtml
+        End If
+        Return strRet
+    End Function
+
+
+    Private Sub hp_Logout_Click(ByVal sender As Object, ByVal e As EventArgs)
+        Session("Level") = 0
+        Session("FullName") = ""
+        Session("Display") = ""
+        Session("User") = ""
+        Session.Clear()    ' add this code to clear all the session objects
+        Session.Abandon()
+        Response.Redirect(Webapps.Utils.ApplicationSettings.Homepage)
+    End Sub
+
+    Private Sub hp_Login_Click(ByVal sender As Object, ByVal e As EventArgs)
+        Session("Level") = 0
+        Session("FullName") = ""
+        Session("Display") = ""
+        Session("User") = ""
+        Session.Clear()    ' add this code to clear all the session objects
+        Session.Abandon()
+        Response.Redirect(System.Configuration.ConfigurationManager.AppSettings("Login"))
+    End Sub
+
+    Private Sub hp_ChangePW_Click(ByVal sender As Object, ByVal e As EventArgs)
+        Response.Redirect("ChangePassword.aspx")
+    End Sub
+
+    Private Sub Page_load(ByVal sender As Object, ByVal e As EventArgs)
+        If Not IsPostBack Then  'Handle seesion for browser cache 
+            Response.Cache.SetExpires(DateTime.Parse(DateTime.Now.ToString()))
+            Response.Cache.SetCacheability(HttpCacheability.Private)
+            Response.Cache.SetCacheability(HttpCacheability.NoCache)
+            Response.Cache.SetNoStore()
+            Response.AppendHeader("Pragma", "no-cache")
+            'GetMenus()
+            GetMainMenus()
+            GetSubMenus()
+        End If
+        SiteTitle.Text = Webapps.Utils.ApplicationSettings.SiteTitle
+        Dim strEnvironment As String = Webapps.Utils.ApplicationSettings.Environment
+        Dim strSite As String = CommonUtilsv2.GetHostSiteID()
+        If strEnvironment = "Production" Or String.IsNullOrEmpty(strEnvironment) Then
+            EnvironmentInfo.Visible = False
+            lbl_SiteID.Text = strSite
+        Else
+            EnvironmentInfo.Visible = True
+            lblEnvironment.Text = strEnvironment
+            lbl_SiteID.Text = strEnvironment & " - " & strSite
+        End If
+        lbl_SiteID.Text = strSite
+        Dim strVersion As String = System.Configuration.ConfigurationManager.AppSettings("Version")
+        'rightNow = DateTime.Now
+        'strFullDateTime = rightNow.ToString("MMMM dd, yyyy @ hh:mm:ss tt")
+        'lblNow.Text = strFullDateTime
+
+        Dim strUser As String = Session("FullName")
+        If strUser <> Nothing Then
+            UserInfo.Visible = True
+            lblUser.Text = "&nbsp;" + Session("FullName") + "<span class='header_user_span'><i class='header_user_span_i'></i></span>"
+            lblUser.Visible = True
+            'spn_changepw.Visible = True
+            'spn_changepw_sep.Visible = True
+            'lblTraingDocDate.Text = GetTrainingDocUpdatedDateInfo()
+            litReviewGuide.Text = GetReviewGuideDocs()
+            dvTrainingDoc.Visible = True
+        Else
+            UserInfo.Visible = False
+            'spn_changepw.Visible = False
+            'spn_changepw_sep.Visible = False
+
+            dvTrainingDoc.Visible = False
+        End If
+    End Sub
+
+    Protected Sub SiteMapPath1_ItemCreated(ByVal sender As Object, ByVal e As System.Web.UI.WebControls.SiteMapNodeItemEventArgs)
+        If e.Item.ItemType = SiteMapNodeItemType.Root OrElse (e.Item.ItemType = SiteMapNodeItemType.PathSeparator AndAlso e.Item.ItemIndex = 1) Then
+            e.Item.Visible = False
+        End If
+    End Sub
+
+    Private Function GetTrainingDocUpdatedDateInfo() As String
+        Dim ret As String = "Last Updated " & DateTime.Now.ToString("MM/dd/yyyy")
+        Dim dbKey As String = System.Configuration.ConfigurationManager.AppSettings("dbKey")
+        Dim myConn As New SqlClient.SqlConnection(dbKey)
+        Dim strSQL As String = " SELECT DateLastUpdated FROM tbl_Web_Public_Documents WHERE [ID] =@ID "
+
+        Dim myComm As New SqlCommand(strSQL, myConn)
+
+        myComm.Parameters.AddWithValue("@ID", 1)
+        Dim myReader As SqlDataReader = Nothing
+        Try
+            myConn.Open()
+            myReader = myComm.ExecuteReader()
+            While myReader.Read()
+                If myReader.GetValue(0) Is System.DBNull.Value Then
+
+                Else
+                    ret = "Last Updated " & myReader.GetDateTime(0).ToString("MM/dd/yyyy")
+                End If
+            End While
+
+        Catch ex As Exception
+            ' errString = ex.Message
+            errLocation = "GetTrainingDocUpdatedDate()"
+            CommonUtilsv2.CreateErrorLog(errLocation, ex, Session("User"), System.IO.Path.GetFileName(HttpContext.Current.Request.RawUrl.ToString), Request.UserHostAddress())
+        Finally
+            If Not myReader Is Nothing AndAlso Not myReader.IsClosed Then
+                myReader.Close()
+            End If
+            myComm.Dispose()
+            myConn.Close()
+        End Try
+        Return ret
+    End Function
+
+    Private Function GetReviewGuideDocs() As String
+
+        Dim dbKey As String = System.Configuration.ConfigurationManager.AppSettings("dbKey")
+        Dim strSQL As String = "prc_GetReviewGuideDocs"
+        Dim myReader As SqlDataReader = Nothing
+        Dim sb As New StringBuilder()
+
+        Dim strID As String = String.Empty
+        Dim strTitle As String = String.Empty
+        Dim strUpdatedDate As String = String.Empty
+        Dim strDocSizeMB As String = String.Empty
+        Dim bFirst As Boolean = True
+        Try
+
+            myReader = CommonUtilsv2.GetDataReader(dbKey, strSQL, CommandType.StoredProcedure)
+            While myReader.Read()
+                strID = String.Empty
+                strTitle = String.Empty
+                strUpdatedDate = String.Empty
+                strDocSizeMB = String.Empty
+
+                If myReader.GetValue(myReader.GetOrdinal("ID")) Is System.DBNull.Value Then
+                Else
+                    strID = myReader.GetInt32(myReader.GetOrdinal("ID")).ToString
+                End If
+
+                If myReader.GetValue(myReader.GetOrdinal("Title")) Is System.DBNull.Value Then
+                Else
+                    strTitle = myReader.GetString(myReader.GetOrdinal("Title"))
+                End If
+
+                If myReader.GetValue(myReader.GetOrdinal("DateLastUpdated")) Is System.DBNull.Value Then
+                Else
+                    strUpdatedDate = "Last Updated " & myReader.GetDateTime(myReader.GetOrdinal("DateLastUpdated")).ToString("MM/dd/yyyy")
+                End If
+
+                If myReader.GetValue(myReader.GetOrdinal("DocSizeMB")) Is System.DBNull.Value Then
+                Else
+                    strDocSizeMB = myReader.GetString(myReader.GetOrdinal("DocSizeMB"))
+                End If
+                If bFirst Then
+                    bFirst = False
+                Else
+                    sb.Append("<br/>")
+                End If
+                '  sb.Append("&nbsp;<a href = 'Download-PublicDocument.aspx?document=" & strID & "' target='_blank'><span class='header_trainingInfo'>" & strTitle & "(" & strDocSizeMB & ")</span></a>")
+                sb.Append("<a href = 'Download-PublicDocument.aspx?document=" & strID & "' target='_blank'><span class='header_trainingInfo'>" & strTitle & "</span></a>")
+                sb.Append("<br/>")
+                sb.Append("<span class='header_trainingInfoSmall'>" & strUpdatedDate & "</span>")
+            End While
+
+        Catch ex As Exception
+            ' errString = ex.Message
+            errLocation = "GetReviewGuideDocs()"
+            CommonUtilsv2.CreateErrorLog(errLocation, ex, Session("User"), System.IO.Path.GetFileName(HttpContext.Current.Request.RawUrl.ToString), Request.UserHostAddress())
+        Finally
+            If Not myReader Is Nothing AndAlso Not myReader.IsClosed Then
+                myReader.Close()
+            End If
+        End Try
+        Return sb.ToString
+    End Function
+
+    Private Function GetQueueString(ByVal sender As String) As String
+        Dim sb As String = String.Empty
+        Try
+            Dim params As SqlParameter() = Nothing
+            Dim strSub As String = Right(sender, Len(sender) - (sender.IndexOf("?") + 1))
+            Dim strList() As String = strSub.Split("&")
+            Dim strId As String = 0
+ 
+            For Each strL As String In strList
+                Dim strS() As String = strL.Split("=")
+                If strS(0) = "id" Then
+                    strId = strS(1)
+                End If
+            Next
+            Dim dbKey As String = System.Configuration.ConfigurationManager.AppSettings("dbKey")
+            Dim strSQL As String = " select 'QueueRegister.aspx?qid='+ convert(varchar,QueueID) as UrlQueue from tbl_Web_DocumentAttributes where DCN=@DCN"
+            params = {New SqlParameter("@DCN", strId)}
+            Dim ds As DataSet = CommonUtilsv2.GetDataSet(dbKey, strSQL, CommandType.Text, params)
+            If ds IsNot Nothing And ds.Tables(0).Rows.Count > 0 Then
+                sb = ds.Tables(0).Rows(0)(0)
+            Else
+                sb = "QueueRegister.aspx?qid=1"
+            End If
+            
+        Catch ex As Exception
+            errLocation = "GetQueueString()"
+            CommonUtilsv2.CreateErrorLog(errLocation, ex, Session("User"), System.IO.Path.GetFileName(HttpContext.Current.Request.RawUrl.ToString), Request.UserHostAddress())
+            ' Throw ex
+        End Try
+        Return sb
+    End Function
+
+    Private Function GetQueueCopyString(ByVal sender As String) As String
+        Dim sb As String = String.Empty
+        Try
+            Dim params As SqlParameter() = Nothing
+            Dim strSub As String = Right(sender, Len(sender) - (sender.IndexOf("?") + 1))
+            Dim strList() As String = strSub.Split("&")
+            Dim strId As String = 0
+            
+
+            For Each strL As String In strList
+                Dim strS() As String = strL.Split("=")
+                If strS(0) = "id" Then
+                    strId = strS(1)
+                End If
+            Next
+            Dim dbKey As String = System.Configuration.ConfigurationManager.AppSettings("dbKey")
+            Dim strSQL As String = " select 'QueueRegister.aspx?qid='+ convert(varchar,QueueID) as UrlQueue from tbl_Web_DocumentAttributes where DCN=@DCN "
+            params = {New SqlParameter("@DCN", strId)}
+            sb = CommonUtilsv2.GetDataSet(dbKey, strSQL, CommandType.Text, params).Tables(0).Rows(0)(0)
+        Catch ex As Exception
+            errLocation = "GetQueueCopyString()"
+            CommonUtilsv2.CreateErrorLog(errLocation, ex, Session("User"), System.IO.Path.GetFileName(HttpContext.Current.Request.RawUrl.ToString), Request.UserHostAddress())
+            ' Throw ex
+        End Try
+        Return sb
+    End Function
+
+
+
+</script>
+
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head runat="server">       
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <title>Document Management Portal</title>
+    <meta name="description" content="Document Management Portal" />
+    <meta name="keywords" content="" />
+    <link href="includes/mainstyle.css?v=2.2.4" rel="stylesheet" type="text/css" />
+    <link href="includes/homepage.css" rel="stylesheet" type="text/css" />
+    <script type="text/javascript" src="includes/js/jquery-3.5.1.min.js"></script>
+    <script type="text/javascript" src="includes/js/jquery-ui.min.js"></script>
+    <script type="text/javascript" src="includes/js/jquery.multiselect.min.js"></script> 
+    <script type="text/javascript" src="includes/js/cookiebanner.min.js"></script>
+    <script type="text/javascript" src="includes/js/cookiebanner.js"></script>
+    <script type="text/javascript">
+        $(function () {
+           
+            //IEVersion();
+
+
+            $("#aspnetForm").css("min-height", $(window).outerHeight() - 218);
+            $(".nav").css("height", $("#aspnetForm").outerHeight());
+
+            $("#dcnsearch").keydown(function (event) {
+                if (event.keyCode == 13) {
+                    var $this = $("#dcnsearch");
+                    var $strdcn = $this.val().trim();
+                    var strwidth = $("body").width() / 2 - 100;
+                    var reg = /^[0-9]+.?[0-9]*$/;
+                    if (!reg.test($strdcn)) {
+                        $("#moddialog").css("left", strwidth + "px");
+                        $("#moddialog").css("display", "block");
+                        $("#moddialogbg").css("display", "block");
+                        $("#dialogcontent").find("p").text("Please key in numbers !");
+                        return false;
+                    }
+                    $.ajax({
+                        type: "Post",
+                        contentType: "application/json;charset=UTF-8",
+                        url: "/Document-Detail.aspx/GetDCNIsExist",
+                        data: "{DCN:'" + $strdcn + "'}",
+                        success: function (result) {
+                            var strjson = JSON.parse(result.d);
+                            if (strjson.status == 2) {
+                                 window.location.href = "/Document-Detail.aspx?id=" + $strdcn;
+                            } else {
+                                $("#moddialog").css("left", strwidth + "px");
+                                $("#moddialog").css("display", "block");
+                                $("#moddialogbg").css("display", "block");
+                                $("#dialogcontent").find("p").text("This dcn is not found!");
+                                return false;
+                            }
+                        }
+                    });
+                    return false;
+                }
+            });
+        });
+
+        function IEVersion() {
+            var userAgent = navigator.userAgent; //Get the userAgent string of the browser   
+            var isIE = userAgent.indexOf("compatible") > -1 && userAgent.indexOf("MSIE") > -1; //Determine whether IE<11 browser   
+            var isEdge = userAgent.indexOf("Edge") > -1 && !isIE; //Determine whether the Edge browser of IE   
+            var isIE11 = userAgent.indexOf('Trident') > -1 && userAgent.indexOf("rv:11.0") > -1;
+            if (isIE) {
+                var reIE = new RegExp("MSIE (\\d+\\.\\d+);");
+                reIE.test(userAgent);
+                var fIEVersion = parseFloat(RegExp["$1"]);
+                if (fIEVersion == 7) {
+                    window.location.href = "Browser_Type_Error.aspx";
+                } else if (fIEVersion == 8) {
+                    window.location.href = "Browser_Type_Error.aspx";
+                } else if (fIEVersion == 9) {
+                    window.location.href = "Browser_Type_Error.aspx";
+                } else if (fIEVersion == 10) {
+                    window.location.href = "Browser_Type_Error.aspx";
+                } else {
+                    window.location.href = "Browser_Type_Error.aspx";
+                }
+            } else if (isEdge) {
+                return true;
+            } else if (isIE11) {
+                window.location.href = "Browser_Type_Error.aspx";
+            } 
+        }
+
+        function myWindowSize(){
+            alert("Window Inner size: " + window.innerWidth + " x " + window.innerHeight);
+            alert("Window Outer size: " + window.outerWidth +" x " + window.outerHeight);
+        }
+        function aonclick()
+        {
+            if ($('body').is('.act')) {
+                $(".act").find("a span").click();
+            } else 
+            {
+                window.location.reload();
+            }
+            
+        }
+
+        function DialogDCNOK()
+        {
+            $("#moddialog").css("display", "none");
+            $("#moddialogbg").css("display", "none");
+            $("#dialogcontent").find("p").text("");
+        }
+
+    </script>
+</head>
+<body id="htmlBoday1" runat="server" class="htmlBody" clientidmode="static">
+    <div id="wrapper">
+        <div id="header">
+            <div class="header_top">
+                <img src="Images/CompanyLogo01.png" alt="Document Management Portal"  />
+                <asp:Label ID="SiteTitle" runat="server" ></asp:Label>
+                <div id="EnvironmentInfo" runat="server" visible="false"  style="float: left;">
+                     &nbsp;&nbsp;<asp:Label ID="lblEnvironment" Text="" runat="server" ></asp:Label>
+                </div>
+            </div>   
+            <div  class="header_top_two">     
+                <div id="dvTrainingDoc" runat="server" visible="false" class="header_top_two_align">
+                    <asp:Literal ID="litReviewGuide" runat="server"></asp:Literal>
+                </div>
+                <div id="UserInfo" runat="server" visible="false" >
+                    <asp:Label ID="lblUser" Text="[UserName]" Visible="false" runat="server" class="header_user"></asp:Label> 
+                    <div class="div-information">
+                    <dl>
+                      
+                      <dd  style="border-radius: 5px 5px 0px 0px;">
+                        <a href="ChangePassword.aspx" style="color: #fff;">Change Password</a>
+                      </dd>
+                      <dd style="border-radius: 0px 0px 5px 5px;">
+                        <asp:Literal ID="LoginOut" runat="server"></asp:Literal>
+                      </dd>
+                    </dl>
+                </div>
+                </div>
+            </div>
+        </div>
+        <!--  This begins the Body section -->
+        <div style="clear:both;margin-bottom: 62px; position:relative;">
+         <form id="form1" runat="server" >
+                <asp:ScriptManager ID="ScriptManager1" runat="server" />
+        <div id="mainBody">          
+                <div id="body-inner">
+                        <div id="navigation" class="navigation-zhan">
+                            <div class="div-stretch  div-stretch-zhan">
+                            <div id="div-system"><a href="javascript:void();" onclick="aonclick()"><img src="Images/Refresh01.jpg" style="width:100%;border-radius: 20px;"/></a></div>
+                            <% If Not String.IsNullOrEmpty(Session("User")) Then%>
+                            <div class="div-dcnsearch">
+                               <input id="dcnsearch" placeholder="Please enter dcn "/> 
+                               <%--<ul></ul>--%>
+                            </div>
+                            <% End If %>
+                            <div><span><i class="div-stretch-zhan-i"></i></span></div>
+                            </div>
+                            <asp:Literal ID="LiteralLeftMenus" runat="server"></asp:Literal>
+                        </div>
+                    <div id="mainContent">
+                        <div id="divSubMenu" runat="server" visible="true" class="submenu">
+                            <asp:Literal ID="LiteralSubMenus" runat="server"></asp:Literal>
+                        </div>
+
+                        <div id="innerContent" align="left" >
+                            <asp:ContentPlaceHolder ID="Body" runat="server">
+                            </asp:ContentPlaceHolder>
+                        </div>
+                    </div>
+                </div>
+
+        </div>
+         </form>
+        </div>
+         <div style="clear:both;"></div>
+        <div id="footer" align="right" style="bottom:0;">
+            <!--  This begins the Footer section -->
+            <p align="left">
+                <b>Disclaimer:</b>  The material and information disclosed on this site is for document archiving purposes only.&nbsp;&nbsp; JMS is not responsible for and makes no representations about the content, completeness, or accuracy of any other web sites that are accessible through this site.
+            </p>
+            <p align="center"><strong><%--<a href="Page.aspx?Name=Privacy" style="color: #fff;">Privacy Notice</a></strong>&nbsp;|&nbsp;<strong><a href="Page.aspx?Name=TermsOfUse" style="color: #fff;">Terms Of Use</a></strong>&nbsp;|&nbsp;--%><asp:Label ID="lblNow" Text="" runat="server"></asp:Label>&nbsp;|&nbsp;Copyright @2021 JMS &nbsp|&nbsp;<asp:Label ID="lbl_SiteID" runat="server" Text="" Visible="true"></asp:Label></p>
+
+        </div>
+    </div>
+    <script type="text/javascript">
+        //var date = new Date((new Date()).valueOf() + 1000 * 3600 * 24);
+        ////var options = { message: "This site uses cookies. By continuing to use the site you are agreeing to our ", textAlign: 'left', moreinfo: "Page.aspx?Name=Privacy#1", moreinfoFontWeight: 'bold', expires: date };
+        //var options = { message: "This site uses cookies. You must click Accept and Close to continue useing the site.", textAlign: 'left', moreinfo: "", moreinfoFontWeight: 'bold', expires: date };
+        //var cb = new Cookiebanner(options); cb.run();
+    </script>
+    <script  type="text/javascript">
+        $(function () {
+           
+
+
+
+        setInterval("GetTime()", 1000);
+        //nav Contraction and expansion
+        $('#aat').on('click', '.nav-item>a', function () {
+            if (!$('.nav').hasClass('nav-mini')) {
+                if ($(this).next().css('display') == "none") {
+                    //open
+                    //$('.nav-item').children('ul').slideUp(300);
+                    $(this).next('ul').slideDown(300);
+                    $(this).parent('li').addClass('nav-show');                   
+                } else {
+                    //close
+                    $(this).next('ul').slideUp(300);
+                    $('.nav-item.nav-show').removeClass('nav-show');
+                }
+            }
+        });
+        //Logo click style
+    	$('#aat').on('click','.nav-item>ul>li',function(){
+    		$(this).addClass("act").siblings().removeClass("act");
+    		$(this).parents(".nav-item").siblings().find(">ul>li").removeClass("act");
+    		//console.log($(this).text())
+    	})
+        //nav-mini switch   				
+    	$('#mini').on('click', function () {
+    	    if (!$('.nav').hasClass('nav-mini')) {
+    	        $('.nav-item.nav-show').removeClass('nav-show');
+    	        $('.nav-item').children('ul').removeAttr('style');
+    	        $('.nav').addClass('nav-mini');
+    	        $('.nav').css('overflow', 'visible');
+    	    } else {
+    	        $('.nav').removeClass('nav-mini');
+    	        $('.nav').css('overflow', 'auto');
+    	    }
+    	});
+    	$(".div-stretch span").click(function () {
+    	    if ($(".nav").css('display') == 'none') {
+    	        $('.div-stretch').removeClass("div-stretch-suo");
+    	        $('.div-stretch').find("i").removeClass("div-stretch-suo-i");
+    	        $('#navigation').removeClass("navigation-suo");
+    	        $('.div-stretch').addClass("div-stretch-zhan");
+    	        $('.div-stretch').find("i").addClass("div-stretch-zhan-i");
+    	        $('#navigation').addClass("navigation-zhan");
+    	        $('#div-system').attr("style", "display: block;");
+    	        $('.div-dcnsearch').attr("style", "display: block;");
+    	        $("#navigation").attr("style", "background:#00437a;");
+
+    	        if (location.pathname.split("/")[1] == "QueueRegister.aspx") {
+    	            SetGridScrollWidth();//The js of the page that calls QueueRegister.aspx 
+    	        }
+    	        
+    	    }
+    	    else {
+    	        $('.div-stretch').removeClass("div-stretch-zhan");
+    	        $('.div-stretch').find("i").removeClass("div-stretch-zhan-i");
+    	        $('#navigation').removeClass("navigation-zhan");
+    	        $('.div-stretch').addClass("div-stretch-suo");
+    	        $('.div-stretch').find("i").addClass("div-stretch-suo-i");
+    	        $('#navigation').addClass("navigation-suo");
+    	        $('#div-system').attr("style", "display:none;");
+    	        $('.div-dcnsearch').attr("style", "display: none;");
+    	        $("#navigation").attr("style", "background:#ffffff;");
+    	        if (location.pathname.split("/")[1] == "QueueRegister.aspx") {
+    	            SetGridScrollWidth();//The js of the page that calls QueueRegister.aspx
+    	        }
+    	    }
+    	    $('.nav').animate({ width: 'toggle' }, 100);
+    	});
+        });
+        function GetTime() {
+            var mon, day, now, hour, min, ampm, time, str, tz, end, beg, sec;
+            mon = new Array("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+                    "Sep", "Oct", "Nov", "Dec");
+            //day = new Array("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat");
+            now = new Date();
+            hour = now.getHours();
+            min = now.getMinutes();
+            sec = now.getSeconds();
+            timespac = "AM";
+            if (hour >= 12)
+            {
+                timespac = "PM";
+            }
+
+            if (hour < 10) {
+                hour = "0" + hour;
+            }
+            if (min < 10) {
+                min = "0" + min;
+            }
+            if (sec < 10) {
+                sec = "0" + sec;
+            }
+            $("#ctl00_lblNow").html(mon[now.getMonth()] + "  " + now.getDate() + ", " + now.getFullYear() + " @ " + hour + ":" + min + ":" + sec + " " + timespac);
+        }
+
+</script>
+
+    <div id="moddialogbg" class="mod-dialog-bg-master" style="display: none;"></div>
+    <div id="moddialog" class="mod-dialog-master" style=" top: 368.5px; display: none;"><div class="dialog-nav-master"><span class="dialog-title-master">Prompt</span><a href="#" onclick="return false" class="dialog-close-master"></a></div><div class="dialog-main-master"><div id="dialogcontent" class="dialog-content-master"><p></p></div><div class="dialog-console-master clearfix_new-master" style="margin-top: 20px;"><a class="console-btn-confirm" href="#" onclick="DialogDCNOK()"  id="btnok3">OK</a></div></div></div>
+</body>
+</html>

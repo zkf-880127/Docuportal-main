@@ -1,0 +1,109 @@
+.calendarCalendar {
+	background-color:#223D5B;
+	text-align:left;
+}
+
+.calendarTitle {
+	font:bold 10px Tahoma;
+	text-align:center;
+	color: white;
+	padding:5px;
+}
+
+.calendarArrowLeft {
+	font:bold 10px Tahoma;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+	color: white;
+	vertical-align: middle;
+	padding-left:10px;
+}
+
+.calendarArrowRight {
+	font:bold 10px Tahoma;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+	color: white;
+	padding-right:10px;
+}
+
+.calendarMonth {
+	background-color: #223D5B;
+}
+
+.calendarMonthTitle {
+	height: 16px;
+	font: bold 11px Tahoma;
+	color: White;
+	text-align:center;
+	padding-top:5px;
+	padding-bottom:7px;
+	border: 1px solid #61758E;
+	background-image: url('bgmonthtitle.gif');
+	background-repeat: repeat-x;
+	background-position: center;
+}
+
+.calendarDayName {
+	font: bold 9px Verdana;
+	color: black;
+	text-align:center;
+	padding-top: 6px;
+	padding-bottom: 6px;
+	color: White;
+	height:10px;
+	vertical-align:bottom;
+}
+
+.calendarDay {
+	font:10px Tahoma;
+	color: #DDDDDD;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+}
+
+.calendarDayToday {
+	font:bold 10px Tahoma;
+	color:white;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+	background-image: url('bgtoday.gif');
+	background-repeat: no-repeat;
+	background-position: center;
+}
+
+.calendarDayDisabled {
+	font:10px Tahoma;
+	color:#050E21;
+	text-align:center;
+}
+
+.calendarDaySelected {
+	font:bold 10px Tahoma;
+	color:white;
+	background-image: url('bgsel.gif');
+	background-repeat: no-repeat;
+	background-position: center;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+}
+
+.calendarDaySpecial {
+	font:bold 10px Tahoma;
+	color:white;
+	background-image: url('bgspecial.gif');
+	background-repeat: no-repeat;
+	background-position: center;
+	text-align:center;
+	cursor:hand; cursor:pointer;
+}
+
+.calendarDatePickerButton {
+	cursor:pointer; cursor:hand;
+	vertical-align:bottom;
+}
+
+.blah {
+	background-color:gold;
+	font:bold 10px Tahoma;
+}

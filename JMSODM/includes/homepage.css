@@ -1,0 +1,28 @@
+/* Style1 */
+.homestyle1         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #B5C3DC; }
+/* Style2 */
+.homestyle2         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #B5C3DC; font-weight:bold;}
+/* Style3 */
+.homestyle3         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #2A376E; }
+/* Style4 */
+.homestyle4         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #2A376E; font-weight:bold;}
+/* Style5 */
+.homesytle5         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #6883AF; }
+/* Style6 */
+.homestyle6         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #6883AF; font-weight:bold;}
+/* Style7 */
+.homesytle7         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #BF2426; }
+/* Style8 */
+.homestyle8         { font-family: Verdana,Arial,Helvetica,sans-serif; color: #BF2426; font-weight:bold;}
+/* NEW Tag*/
+.homenewtag         { font-family: Verdana,Arial,Helvetica,sans-serif; font-size: 10px; color:#D53C36; font-weight:bold; text-transform:capitalize;}
+/* Alert */
+.homealert1         { color: #FF0000; font-weight: bold; }
+/* Alert */
+.homealert2         { color: #FF0000; font-weight: normal; }
+/* Small */
+.homesmall          { font-family: Verdana,Arial,Helvetica,sans-serif; font-size: x-small; }
+/* Strike */
+.homestrikethrough  { font-family: Verdana,Arial,Helvetica,sans-serif; text-decoration: line-through; }
+/* Highlight */
+.homehighlight      { background-color:Yellow; font-weight: bold; }
